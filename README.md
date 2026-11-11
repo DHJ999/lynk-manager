@@ -1,10 +1,12 @@
 # Lynk-Manager · 车机应用管家
 
-![version](https://img.shields.io/badge/version-1.0.0-blue)
-![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)
-![Gradle](https://img.shields.io/badge/Gradle-9.1.0-02303A?logo=gradle&logoColor=white)
-![license](https://img.shields.io/badge/license-MIT-yellow)
-![status](https://img.shields.io/badge/status-personal%20use-orange)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android">
+  <img src="https://img.shields.io/badge/Gradle-9.1.0-02303A?logo=gradle&logoColor=white" alt="Gradle">
+  <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
+  <img src="https://img.shields.io/badge/status-personal%20use-lightgrey" alt="status">
+</p>
 
 领克车机的应用管理与调试工具：列出已安装应用、卸载、强制停止、导出 APK、跳转系统详情，
 并内置 ADB 开关——**不用再进开发者模式**。
@@ -137,7 +139,10 @@ app/src/main/AndroidManifest.xml
 
 ## 许可
 
-MIT（待补 LICENSE 文件）。
+[PolyForm Noncommercial 1.0.0](LICENSE)
+
+可以自由使用、修改、分发本项目和它的编译产物，**但仅限非商业目的**：不得用于销售、
+付费服务、广告变现，也不得集成进商业产品。完整条款见 [LICENSE](LICENSE)。
 
 本项目按「现状」提供，不附带任何明示或暗示的担保。使用前请阅读文首的免责声明；
-一旦使用、复制或分发本项目的任何部分，即视为你已理解并接受其中的全部条款。
+一旦使用、复制或分发本项目的任何部分，即视为你已理解并接受上述条款。
