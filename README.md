@@ -1,4 +1,4 @@
-# Lynk-Manager · 车机应用管家
+<h1 align="center">Lynk-Manager · 车机应用管家</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version">
