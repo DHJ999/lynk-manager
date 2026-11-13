@@ -1,7 +1,7 @@
 <h1 align="center">Lynk-Manager · 车机应用管家</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-1.3.2-blue" alt="version">
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Gradle-9.1.0-02303A?logo=gradle&logoColor=white" alt="Gradle">
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
@@ -19,7 +19,7 @@
 > 请只在**你本人拥有或有权操作**的设备上使用；因使用本工具造成的任何直接或间接损失，作者不承担责任。
 > **若不同意上述条款，请立即停止使用并删除本应用。**
 
-- 包名 `com.duan.lynkmanager` · 版本 1.0.0（versionCode 1）
+- 包名 `com.duan.lynkmanager` · 版本 1.3.2（versionCode 27）
 - minSdk 26 / targetSdk 34 / compileSdk 36
 - 仅二维码用到 ZXing core，其余纯平台 API
 
@@ -29,7 +29,8 @@
 
 | 功能 | 说明 |
 |---|---|
-| 应用网格 | 卡片视图：图标、软件名、包名、版本/大小/系统标签，一屏多格 |
+| 应用网格 | 卡片视图：图标、软件名、包名、版本/大小；包名只留后两段（`com.ecarx.cs11.launcher` → `cs11.launcher`），版本号超 12 字符截断，系统应用橙色、用户应用蓝色 |
+| 刷新列表 | 筛选行右侧「刷新」，重扫已安装应用；保留当前搜索词与筛选档位，完成后提示总数 |
 | 搜索 / 筛选 | 按名称或包名实时过滤；全部 / 用户应用 / 系统应用 |
 | 点击卡片 | 菜单：强制停止 / 卸载 / 导出 APK / 应用详情；**系统应用无「卸载」** |
 | 强制停止 | `killBackgroundProcesses`，只对后台进程有效 |
@@ -47,12 +48,31 @@
 
 ### ADB 开关（右上角）
 
+**不进工厂模式也能开**。这台车机的 SELinux 是 `Permissive`，普通应用执行 `setprop`
+不会被拦（实测 `setprop persist.sv.debug.adb_enable` 返回 `rc=0`），所以能直接改到真正的开关上。
+
 | 操作 | 说明 |
 |---|---|
-| 单击 | 直接写 `Settings.Global.ADB_ENABLED`，按钮显示「已开 / 已关」，1.2s 后回读校验 |
-| 长按 | 进入开关面板：授权状态、su 兜底、开机自动开启 |
-| 开机自动开启 | 开机广播写回，解决重启后 ADB 关闭 |
-| 校验失败 | 提示「本机把开关托管在厂商设置里」，不假装成功 |
+| 单击 | **只读**。弹出面板列出：系统 `adb_enabled`、厂商 `persist.sv.debug.adb_enable`、`adbd` 服务、`sys.usb.config`、写入权限 |
+| 长按 | 真正开关 ADB，二次确认后写三个属性 |
+| 按钮三态 | 绿「ADB 已通」= USB 配置含 adb 且 adbd 在跑且厂商开关为开；黄「ADB 待开启」= 通道在但厂商开关是关的；红「ADB 未通」 |
+
+长按后写入的三个属性：
+
+| 属性 | 作用 |
+|---|---|
+| `persist.sv.debug.adb_enable` | 车机真正的调试开关，`adbd` 靠它启动 |
+| `persist.sys.usb.config=adb` | 重启后 USB 仍带 adb 功能 |
+| `sys.usb.config=adb` | 让 init 立即重配 USB，`adbd` 当场生效 |
+
+**代价**：第三个属性会触发 USB 重新枚举，电脑端掉线约 1 分钟才恢复。
+这是让 adbd 立刻生效的唯一办法，不是 bug。
+
+开机自动开启（`BootReceiver`）也是写 `persist.sv.debug.adb_enable`，
+不再依赖无效的 `Settings.Global.ADB_ENABLED`，所以重启后不需要再进工厂模式。
+
+> 早期版本只写 `Settings.Global.ADB_ENABLED`，那个值在这台车机上不启动 adbd，
+> 还会让 USB gadget 重枚举成 `PID_4EE7` 诊断模式、直接把连接弄断。
 
 ### 传文件（上传 / 下载）
 
@@ -131,7 +151,9 @@ app/src/main/AndroidManifest.xml
 - **不能清数据、不能冻结/停用**：分别需要 `CLEAR_APP_USER_DATA`、`CHANGE_COMPONENT_ENABLED_STATE`
 - **读不到 logcat**：`READ_LOGS` 是 signature 级权限，抓日志用 [lynk-adb-tool](https://github.com/DHJ999/lynk-adb-tool)
 - **强制停止只对后台进程有效**：前台或常驻进程停不掉，这是 Android 机制
-- **ADB 开关可能被厂商托管**：不读 `Settings.Global.ADB_ENABLED` 的 ROM 会写成功但读数不变
+- **ADB 开关依赖 SELinux Permissive**：本机车机是 Permissive，应用能直接 `setprop`；若换到 Enforcing 的机型，开关会失败并在弹窗里显示命令回执
+- **开启 ADB 会掉线约 1 分钟**：写 `sys.usb.config` 必然触发 USB 重枚举，属正常代价
+- **USB 物理掉线属于系统层**：线材接触、车机休眠、adbd 半死都会让 `adb devices` 变 offline，adbd 重启实测约 70 秒，应用侧无法代劳
 - **开机自启可能被拦**：部分省电策略拦截开机广播，需加自启动白名单
 - **传文件要求同一局域网**：车机开热点或与设备连同一 Wi-Fi，4G/5G 下不互通
 - **服务仅前台可靠**：退出应用或进程被回收后服务停止，需重新启动

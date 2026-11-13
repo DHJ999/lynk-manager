@@ -8,8 +8,12 @@ import android.content.pm.PackageManager;
 import android.provider.Settings;
 
 /**
- * 车机重启后 ADB 会自动关闭。开机广播到达时把开关写回去，
- * 前提是用户已在设置里勾选"开机自动开启"，且一次性授权仍然有效。
+ * 车机重启后 ADB 会自动关闭。
+ *
+ * 真正决定 adbd 起不停的是厂商属性 persist.sv.debug.adb_enable，
+ * 仅写 Settings.Global.ADB_ENABLED 在这台车机上无效（实测重启后依旧连不上）。
+ * 本机 SELinux 为 Permissive，普通应用可以直接 setprop，
+ * 所以这里开机把厂商开关写回，重启后不用再进工厂模式。
  */
 public class BootReceiver extends BroadcastReceiver {
 
@@ -30,17 +34,18 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
 
-        if (context.checkSelfPermission(AdbSwitchActivity.PERM) != PackageManager.PERMISSION_GRANTED) {
-            return;
-        }
+        // 主路径：直接写厂商开关与 USB 配置
+        MainActivity.sh("setprop persist.sv.debug.adb_enable 1");
+        MainActivity.sh("setprop persist.sys.usb.config adb");
 
+        // 副路径：同步 Settings 值，让系统设置页显示一致
         try {
             Settings.Global.putInt(context.getContentResolver(),
                     Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 1);
             Settings.Global.putInt(context.getContentResolver(),
                     Settings.Global.ADB_ENABLED, 1);
         } catch (Throwable ignored) {
-            // 授权被撤销或厂商 ROM 拦截时静默失败，用户可在应用内看到状态
+            // 授权被撤销时静默失败，用户可在应用内看到真实状态
         }
     }
 }
