@@ -10,8 +10,8 @@ android {
         applicationId = "com.duan.lynkmanager"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "1.3.2"
+        versionCode = 28
+        versionName = "1.0.1"
     }
 
     buildTypes {

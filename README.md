@@ -1,7 +1,7 @@
 <h1 align="center">Lynk-Manager · 车机应用管家</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.2-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-1.0.1-blue" alt="version">
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Gradle-9.1.0-02303A?logo=gradle&logoColor=white" alt="Gradle">
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
@@ -19,7 +19,7 @@
 > 请只在**你本人拥有或有权操作**的设备上使用；因使用本工具造成的任何直接或间接损失，作者不承担责任。
 > **若不同意上述条款，请立即停止使用并删除本应用。**
 
-- 包名 `com.duan.lynkmanager` · 版本 1.3.2（versionCode 27）
+- 包名 `com.duan.lynkmanager` · 版本 1.0.1（versionCode 28）
 - minSdk 26 / targetSdk 34 / compileSdk 36
 - 仅二维码用到 ZXing core，其余纯平台 API
 
