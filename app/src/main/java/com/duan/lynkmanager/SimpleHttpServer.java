@@ -34,6 +34,8 @@ public class SimpleHttpServer {
     private final File dir;
     private final File exportDir;
     private final Listener listener;
+    /** 本次上传里因为不是 .apk 被拒的文件名，回给页面提示用。 */
+    private final List<String> rejectedNames = new java.util.ArrayList<>();
     private ServerSocket server;
     private Thread acceptThread;
     private volatile boolean running;
@@ -48,7 +50,14 @@ public class SimpleHttpServer {
         IOException last = null;
         for (int port = 8080; port <= 8090; port++) {
             try {
-                server = new ServerSocket(port);
+                // 显式绑定通配地址：0.0.0.0 + ::
+                // 车机同时有多个网卡（wlan0 连热点、ap0 开热点、eth 内部链路），
+                // 只绑某一个地址时换网络就接不到连接。绑通配地址可一次覆盖全部。
+                ServerSocket ss = new ServerSocket();
+                ss.setReuseAddress(true);
+                ss.bind(new java.net.InetSocketAddress(
+                        java.net.InetAddress.getByName("0.0.0.0"), port));
+                server = ss;
                 break;
             } catch (IOException e) {
                 last = e;
@@ -123,7 +132,15 @@ public class SimpleHttpServer {
     }
 
     private void handle(Socket socket) throws IOException {
-        InputStream in = new BufferedInputStream(socket.getInputStream());
+        // 缓冲从默认 8KB 提到 64KB：
+        // 传几十 MB 的 APK 时，8KB 缓冲意味着几千次内核往返，
+        // 在车机这种 CPU 不强的设备上会明显拖慢整体吞吐。
+        InputStream in = new BufferedInputStream(socket.getInputStream(), 64 * 1024);
+        // 关闭 Nagle：小包立即发出，请求头/响应不必等凑满一包
+        try {
+            socket.setTcpNoDelay(true);
+        } catch (Throwable ignored) {
+        }
         String requestLine = readLine(in);
         if (requestLine == null || requestLine.isEmpty()) {
             return;
@@ -203,12 +220,16 @@ public class SimpleHttpServer {
             if (boundary == null) {
                 result = "ERROR 缺少 multipart 边界";
             } else {
+                rejectedNames.clear();
                 List<File> saved = parseMultipart(body, boundary);
                 StringBuilder sb = new StringBuilder();
                 for (File f : saved) {
                     sb.append("OK ").append(f.getName()).append('\n');
                 }
-                if (saved.isEmpty()) {
+                for (String r : rejectedNames) {
+                    sb.append("SKIP ").append(r).append(" 不是 apk，已忽略\n");
+                }
+                if (saved.isEmpty() && rejectedNames.isEmpty()) {
                     sb.append("ERROR 没有解析到文件\n");
                 }
                 result = sb.toString();
@@ -277,7 +298,16 @@ public class SimpleHttpServer {
             }
             String name = extractFilename(partHeaders);
             if (name != null) {
-                File out = uniqueFile(sanitize(name));
+                String safe = sanitize(name);
+                // 只收 APK：车机这个入口就是为装包准备的，别的文件一律拒绝，
+                // 免得车机存储被无关文件占满。
+                if (!safe.toLowerCase(Locale.US).endsWith(".apk")) {
+                    rejectedNames.add(safe);
+                    log("拒绝非 APK：" + safe);
+                    pos = next;
+                    continue;
+                }
+                File out = uniqueFile(safe);
                 FileOutputStream fos = null;
                 try {
                     fos = new FileOutputStream(out);
@@ -299,7 +329,42 @@ public class SimpleHttpServer {
         return saved;
     }
 
+    /**
+     * 从 multipart 分段头里取出文件名。
+     *
+     * 关键点：整段头是按 ISO-8859-1 解出来的（这样 1 字节 = 1 字符，二进制安全），
+     * 但浏览器发的中文文件名是 UTF-8 字节流。直接用上面那个字符串就会变成乱码
+     * （"微信.apk" 会变成 "å¾®ä¿¡.apk"）。
+     * 所以这里要把字符串按 ISO-8859-1 还原回字节，再按 UTF-8 解一次。
+     *
+     * 另外兼容 RFC 5987 的 filename*=UTF-8''%E5%BE%AE... 形式。
+     */
     private String extractFilename(String headers) {
+        // ① 优先 RFC 5987：filename*=UTF-8''<percent-encoded>
+        int star = headers.indexOf("filename*=");
+        if (star >= 0) {
+            int s = star + "filename*=".length();
+            int e = headers.indexOf(';', s);
+            if (e < 0) {
+                e = headers.indexOf('\r', s);
+            }
+            if (e < 0) {
+                e = headers.length();
+            }
+            String raw = headers.substring(s, e).trim();
+            int qq = raw.indexOf("''");
+            if (qq >= 0) {
+                String charset = raw.substring(0, qq);
+                String enc = raw.substring(qq + 2);
+                try {
+                    return java.net.URLDecoder.decode(enc,
+                            charset.isEmpty() ? "UTF-8" : charset);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+
+        // ② 普通 filename="..."
         String key = "filename=\"";
         int i = headers.indexOf(key);
         if (i < 0) {
@@ -310,7 +375,38 @@ public class SimpleHttpServer {
         if (end <= start) {
             return null;
         }
-        return headers.substring(start, end);
+        String raw = headers.substring(start, end);
+        return decodeUtf8Bytes(raw);
+    }
+
+    /**
+     * 把「被 ISO-8859-1 误解的 UTF-8 字节」修回正确字符串。
+     * 纯 ASCII 名字经这一步完全不变；非法 UTF-8 序列则原样返回，不破坏原有行为。
+     */
+    private String decodeUtf8Bytes(String raw) {
+        if (raw == null || raw.isEmpty()) {
+            return raw;
+        }
+        boolean ascii = true;
+        for (int i = 0; i < raw.length(); i++) {
+            if (raw.charAt(i) > 0x7F) {
+                ascii = false;
+                break;
+            }
+        }
+        if (ascii) {
+            return raw;
+        }
+        try {
+            byte[] bytes = raw.getBytes(StandardCharsets.ISO_8859_1);
+            java.nio.charset.CharsetDecoder dec = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+            return dec.decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (Throwable t) {
+            // 不是合法 UTF-8（可能是 GBK 等），保持原样
+            return raw;
+        }
     }
 
     private String sanitize(String name) {
@@ -413,8 +509,7 @@ public class SimpleHttpServer {
     }
 
     private static void respond(Socket socket, int code, String contentType, byte[] body)
-            throws IOException {
-        OutputStream out = socket.getOutputStream();
+            throws IOException {        OutputStream out = socket.getOutputStream();
         String head = "HTTP/1.1 " + code + " " + (code == 200 ? "OK" : "ERROR") + "\r\n"
                 + "Content-Type: " + contentType + "\r\n"
                 + "Content-Length: " + body.length + "\r\n"
@@ -634,17 +729,21 @@ public class SimpleHttpServer {
               .rm{flex:none;width:30px;height:30px;border:0;border-radius:8px;background:#2c343e;
                    color:#c8d2dc;font-size:17px;line-height:1;cursor:pointer}
               .rm:hover{background:#8f3a3a;color:#fff}
+              .rm:disabled{background:#242a31;color:#5c6874;cursor:not-allowed}
+              .rm:disabled:hover{background:#242a31;color:#5c6874}
+              label.file.disabled{border-color:#242a31;color:#5c6874;cursor:not-allowed}
+              .btn:disabled{background:#2c343e;color:#8a97a6;cursor:not-allowed}
               .empty{color:#5c6874;font-size:13px;text-align:center;padding:8px 0 0}
               label.file:hover{border-color:#4caf50;color:#9be08a}
             </style>
             </head>
             <body>
-            <h1>传到车机</h1>
-            <div class="sub">选好文件后点上传，同一个 Wi-Fi 下即可 · <a href="/dl" style="color:#4caf50;text-decoration:none">下载车机文件 →</a></div>
+            <h1>传 APK 到车机</h1>
+            <div class="sub">选好 APK 后点上传，同一个 Wi-Fi 下即可 · <a href="/dl" style="color:#4caf50;text-decoration:none">下载车机文件 →</a></div>
 
             <div class="card">
-              <label class="file" for="f" id="pick">点击选择文件（可多选，可多次添加）</label>
-              <input id="f" type="file" multiple>
+              <label class="file" for="f" id="pick">点击选择 APK（可多选，可多次添加）</label>
+              <input id="f" type="file" accept=".apk,application/vnd.android.package-archive" multiple>
               <ul class="files" id="list"></ul>
               <div class="empty" id="empty">还没有选择文件</div>
               <button class="btn" id="go" disabled>上传</button>
@@ -657,6 +756,9 @@ public class SimpleHttpServer {
 
             <script>
             var picked=[];
+            // uploading=true 期间：移除按钮禁用、选择文件禁用、上传按钮禁用。
+            // 否则用户删掉正在上传的文件，XHR 里的 File 对象会失效，进度就卡死了。
+            var uploading=false;
             var f=document.getElementById('f'),go=document.getElementById('go'),
                 pick=document.getElementById('pick'),logEl=document.getElementById('log'),
                 bar=document.getElementById('bar'),fill=document.getElementById('fill'),
@@ -695,20 +797,38 @@ public class SimpleHttpServer {
                 sz.textContent=sizeText(file.size);
                 meta.appendChild(nm); meta.appendChild(sz);
                 var rm=document.createElement('button'); rm.className='rm'; rm.textContent='×';
-                rm.title='移除这个文件';
-                rm.onclick=function(){var k=picked.indexOf(file);
-                  if(k>=0){picked.splice(k,1); render();}};
+                if(uploading){
+                  // 上传期间禁止移除：正在传的文件被删掉会让 XHR 读到失效的 File 对象，
+                  // 表现为进度卡死或抛异常。传完自动恢复可点。
+                  rm.disabled=true;
+                  rm.title='上传中，不能移除';
+                  rm.style.opacity='0.35';
+                  rm.style.cursor='not-allowed';
+                }else{
+                  rm.title='移除这个文件';
+                  rm.onclick=function(){var k=picked.indexOf(file);
+                    if(k>=0){picked.splice(k,1); render();}};
+                }
                 li.appendChild(th); li.appendChild(meta); li.appendChild(rm);
                 listEl.appendChild(li);
               })(picked[idx]);}
-              go.disabled=picked.length===0;
-              go.textContent=picked.length?('上传 '+picked.length+' 个文件'):'上传';
-              pick.textContent=picked.length?'继续添加文件':'点击选择文件（可多选，可多次添加）';
+              go.disabled=picked.length===0||uploading;
+              go.textContent=uploading?'上传中…'
+                :(picked.length?('上传 '+picked.length+' 个 APK'):'上传');
+              pick.textContent=uploading?'上传中，请稍候'
+                :(picked.length?'继续添加 APK':'点击选择 APK（可多选，可多次添加）');
+              // 上传期间把选择框也变灰：点进去再加文件会让 picked 变化，
+              // 与正在跑的上传循环相互干扰（虽然逻辑上能跑，但界面会跳）
+              pick.className=uploading?'disabled':'';
+              if(uploading){pick.onclick=function(e){e.preventDefault();return false;};}
+              else{pick.onclick=null;}
             }
 
             f.onchange=function(){
+              var skipped=[];
               for(var i=0;i<f.files.length;i++){
                 var nf=f.files[i],dup=false;
+                if(!/\\.apk$/i.test(nf.name)){skipped.push(nf.name);continue;}
                 for(var j=0;j<picked.length;j++){
                   if(picked[j].name===nf.name&&picked[j].size===nf.size){dup=true;break;}
                 }
@@ -716,26 +836,63 @@ public class SimpleHttpServer {
               }
               f.value='';
               render();
+              if(skipped.length){say('已忽略非 APK 文件：'+skipped.join('、'),'err');}
             };
 
             go.onclick=async function(){
-              if(!picked.length){return;}
+              if(!picked.length||uploading){return;}
+              uploading=true;
               go.disabled=true; bar.style.display='block';
+              render();
               var total=picked.length,done=0;
+
+              // 用 XMLHttpRequest 而不是 fetch：
+              // fetch() 在整个上传期间不提供任何回调，进度条只能停在 0%，
+              // 传完才突然跳满 —— 看起来就是"卡住不动然后突然好了"。
+              // XHR 的 upload.onprogress 能拿到真实已发送字节数。
+              function uploadOne(file,onProgress){
+                return new Promise(function(resolve,reject){
+                  var xhr=new XMLHttpRequest();
+                  xhr.open('POST','/upload',true);
+                  xhr.upload.onprogress=function(e){
+                    if(e.lengthComputable){onProgress(e.loaded,e.total);}
+                  };
+                  xhr.onload=function(){resolve(xhr.responseText||'');};
+                  xhr.onerror=function(){reject(new Error('网络错误'));};
+                  xhr.ontimeout=function(){reject(new Error('超时'));};
+                  xhr.onabort=function(){reject(new Error('已取消'));};
+                  // 大文件给足时间：10 分钟
+                  xhr.timeout=600000;
+                  var fd=new FormData(); fd.append('file',file,file.name);
+                  xhr.send(fd);
+                });
+              }
+
               while(picked.length){
                 var file=picked[0];
-                var fd=new FormData(); fd.append('file',file,file.name);
-                fill.style.width=(done/total*100)+'%';
-                say('上传 '+file.name+' …');
+                // 整体进度 = 已完成文件数 + 当前文件的上传比例
+                var base=done/total*100;
+                var step=(1/total)*100;
+                fill.style.width=base.toFixed(1)+'%';
+                say('上传 '+file.name+' … 0%');
                 try{
-                  var r=await fetch('/upload',{method:'POST',body:fd});
-                  var t=(await r.text()).trim();
+                  var t=await uploadOne(file,function(loaded,totalBytes){
+                    var pct=totalBytes>0?(loaded/totalBytes):0;
+                    fill.style.width=(base+step*pct).toFixed(1)+'%';
+                    var mb=(loaded/1048576).toFixed(1);
+                    var mbAll=(totalBytes/1048576).toFixed(1);
+                    say('上传 '+file.name+' … '+Math.round(pct*100)+'%  ('+mb+'/'+mbAll+' MB)');
+                  });
+                  t=(t||'').trim();
                   say(t,t.indexOf('OK')===0?'ok':'err');
                   if(t.indexOf('OK')===0){picked.splice(0,1); render();}
                 }catch(e){ say('失败：'+e.message,'err'); break; }
                 done++;
+                fill.style.width=(done/total*100).toFixed(1)+'%';
               }
               fill.style.width='100%';
+              // 解锁：上传结束（成功或失败）都要恢复，否则 × 和按钮会永久变灰
+              uploading=false;
               setTimeout(function(){bar.style.display='none';fill.style.width='0';},800);
               render();
             };

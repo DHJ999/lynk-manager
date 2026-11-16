@@ -13,6 +13,19 @@
     <!-- signature|privileged|development：普通安装拿不到，需 adb 一次性授权 -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 传文件前台服务需要（targetSdk<28 也显式声明，避免个别 ROM 直接拒） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- 车机上点已上传的 APK 直接拉起安装器 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- 局域网传文件：车机开热点 / 连手机热点 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- startLocalOnlyHotspot 与 WifiNetworkSpecifier 需要定位权限（Android 10+ 强制） -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
 
     <application
         android:name=".LynkApp"
@@ -26,7 +39,8 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="true"
-            android:screenOrientation="landscape">
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -47,6 +61,33 @@
             android:label="传文件"
             android:screenOrientation="landscape" />
 
+        <!-- 把 uploads/export 下的 apk 以 content:// 暴露给系统安装器（Android 7+ 禁止 file:// 直传） -->
+        <provider
+            android:name=".ApkProvider"
+            android:authorities="com.duan.lynkmanager.apk"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- 安装助手：用无障碍通道点系统安装器上的「安装」按钮（触摸被防劫持过滤挡住） -->
+        <service
+            android:name=".InstallClickService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/acc_service" />
+        </service>
+
+        <!-- 传文件前台服务：防止应用退到后台后车机省电策略把 ServerSocket 一起回收 -->
+        <service
+            android:name=".TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
@@ -54,6 +95,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 接收 PackageInstaller 会话的提交结果；只在应用内部用，不对外暴露 -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.duan.lynkmanager.INSTALL_RESULT" />
             </intent-filter>
         </receiver>
     </application>

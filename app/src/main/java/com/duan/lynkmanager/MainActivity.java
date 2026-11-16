@@ -25,6 +25,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.GridView;
@@ -65,6 +66,8 @@ public class MainActivity extends BaseActivity {
     private GridView grid;
     private TextView stats;
     private Button adbBtn;
+    /** 首次安装引导条：缺 WRITE_SECURE_SETTINGS 时显示。 */
+    private TextView setupBanner;
     private Button refreshBtn;
     /** 根布局，供 onWindowFocusChanged 里做高度校正。 */
     private LinearLayout rootLayout;
@@ -87,6 +90,19 @@ public class MainActivity extends BaseActivity {
         setContentView(buildUi());
         loadApps();
 
+        // 双保险：把窗口的初始焦点从搜索框挪走，防止一进应用就弹软键盘。
+        // 布局里第一个可获焦控件是搜索框，即使它设了 focusable=false，
+        // 某些 ROM（含本车机）仍会把焦点落到第一个 EditText 上。
+        // 这里主动给根 View 设 focusableInTouchMode 并请求焦点。
+        View content = findViewById(android.R.id.content);
+        if (content != null) {
+            content.setFocusableInTouchMode(true);
+            content.requestFocus();
+        }
+        getWindow().setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+                        | android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
+
         // 诊断入口：am start ... --ez probe true
         // 用无害的 persist.sv.debug.lm_probe 验证「应用身份能否 setprop」，
         // 不碰真正的 adb 开关，测完清空。
@@ -101,6 +117,9 @@ public class MainActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         updateAdbButton();
+        // 每次回到主界面都查一次授权状态：用户可能刚在电脑上跑完 adb 命令，
+        // 切回来红条应当自动消失，不用重启应用。
+        refreshSetupBanner();
         // 布局把网格挤成 0 高时界面看起来是「空的」，但日志里数据是全的。
         // 这里把关键尺寸打出来，方便现场一眼区分「没数据」和「没显示」。
         if (grid != null) {
@@ -328,6 +347,26 @@ public class MainActivity extends BaseActivity {
             }
         });
 
+        // 首次安装引导条：新车上从 U 盘装完后，本应用还没有
+        // WRITE_SECURE_SETTINGS，也就无法自己开无障碍、无法装 APK。
+        // 这条红色提示直接把需要执行的 adb 命令摆出来，用户不用去猜。
+        setupBanner = tv("", 13, 0xFFFFFFFF, true);
+        setupBanner.setPadding(dp(16), dp(12), dp(16), dp(12));
+        setupBanner.setBackground(box(0xFFE05B5B, 12));
+        setupBanner.setVisibility(View.GONE);
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sbLp.leftMargin = bp;
+        sbLp.rightMargin = bp;
+        sbLp.bottomMargin = dp(8);
+        root.addView(setupBanner, sbLp);
+        setupBanner.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showSetupGuide();
+            }
+        });
+
         // 搜索
         search = new EditText(this);
         search.setHint("搜索应用名或包名");
@@ -337,6 +376,26 @@ public class MainActivity extends BaseActivity {
         search.setSingleLine(true);
         search.setBackground(box(CARD, 10));
         search.setPadding(dp(14), dp(8), dp(14), dp(8));
+        // 不要让搜索框在打开应用时自动抢焦点：
+        // 它是布局里第一个可获焦控件，Activity 启动时系统会把焦点给它，
+        // 于是软键盘自动弹出来，挡住半个应用列表。改为不可主动获焦，
+        // 用户主动点击时仍照常输入（点击会隐式请求焦点）。
+        search.setFocusableInTouchMode(false);
+        search.setFocusable(false);
+        search.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 用户点了才真正拿焦点并弹键盘
+                search.setFocusableInTouchMode(true);
+                search.setFocusable(true);
+                search.requestFocus();
+                InputMethodManager imm = (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(search, InputMethodManager.SHOW_IMPLICIT);
+                }
+            }
+        });
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         slp.leftMargin = bp;
@@ -614,6 +673,100 @@ public class MainActivity extends BaseActivity {
 
     private boolean hasSecurePerm() {
         return checkSelfPermission(AdbSwitchActivity.PERM) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * 刷新「首次安装引导条」。
+     *
+     * 新车从 U 盘装完本应用后，还差两件事才能真正装 APK：
+     *   1. REQUEST_INSTALL_PACKAGES 允许（否则点安装被拒）
+     *   2. WRITE_SECURE_SETTINGS（我们靠它自己开无障碍助手代点「安装」按钮）
+     * 两个都只能靠电脑 adb 授权一次。这里检测到缺失就常驻红条，
+     * 点开给出完整命令 + 一键复制，避免用户以为"软件坏了"。
+     */
+    private void refreshSetupBanner() {
+        if (setupBanner == null) {
+            return;
+        }
+        final boolean hasSecure = hasSecurePerm();
+        final String opMode = readInstallOpModeForMain();
+        final boolean installOk = "allow".equals(opMode) || "default".equals(opMode);
+        if (hasSecure && installOk) {
+            setupBanner.setVisibility(View.GONE);
+            return;
+        }
+        StringBuilder sb = new StringBuilder("⚠ 还需一次性授权才能安装 APK：");
+        if (!installOk) {
+            sb.append("安装权限已关闭");
+        }
+        if (!hasSecure) {
+            if (!installOk) {
+                sb.append(" · ");
+            }
+            sb.append("缺少 WRITE_SECURE_SETTINGS");
+        }
+        sb.append("（点这里看怎么执行）");
+        setupBanner.setText(sb.toString());
+        setupBanner.setVisibility(View.VISIBLE);
+    }
+
+    /** 读安装权限状态，和 LanTransferActivity 用同一套逻辑。 */
+    private String readInstallOpModeForMain() {
+        try {
+            android.app.AppOpsManager aom =
+                    (android.app.AppOpsManager) getSystemService(Context.APP_OPS_SERVICE);
+            if (aom == null) {
+                return "unknown";
+            }
+            int mode = aom.checkOpNoThrow("android:request_install_packages",
+                    android.os.Process.myUid(), getPackageName());
+            switch (mode) {
+                case android.app.AppOpsManager.MODE_ALLOWED:
+                    return "allow";
+                case android.app.AppOpsManager.MODE_IGNORED:
+                    return "ignored";
+                case android.app.AppOpsManager.MODE_ERRORED:
+                    return "deny";
+                default:
+                    return "default";
+            }
+        } catch (Throwable t) {
+            return "unknown";
+        }
+    }
+
+    /** 新车上需要执行的两条命令，一次性给全。 */
+    private void showSetupGuide() {
+        String pkg = getPackageName();
+        final String cmd =
+                "adb shell appops set " + pkg + " REQUEST_INSTALL_PACKAGES allow\n"
+                        + "adb shell pm grant " + pkg
+                        + " android.permission.WRITE_SECURE_SETTINGS";
+        new AlertDialog.Builder(this)
+                .setTitle("新车首次使用：跑一次这两条命令")
+                .setMessage("本应用要能装 APK，需要两个授权。这台车机的设置里"
+                        + "没有对应页面，只能用 adb 授一次（重启不丢，卸载才需要重做）。\n\n"
+                        + "1) 车机连电脑，车机弹「允许 USB 调试」→ 点允许\n"
+                        + "2) 电脑终端执行：\n\n"
+                        + cmd + "\n\n"
+                        + "第一条：允许本应用发起安装\n"
+                        + "第二条：允许本应用自动点掉系统安装框上的「安装」按钮"
+                        + "（那个按钮有防点击保护，手指点不动）\n\n"
+                        + "执行完不用重装，回到本页红条会自动消失。")
+                .setPositiveButton("复制命令", (d, w) -> {
+                    try {
+                        android.content.ClipboardManager cm =
+                                (android.content.ClipboardManager)
+                                        getSystemService(Context.CLIPBOARD_SERVICE);
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("cmd", cmd));
+                        toast("已复制，粘到电脑终端执行");
+                    } catch (Throwable t) {
+                        toast("复制失败，请手动记录");
+                    }
+                })
+                .setNeutralButton("重新检测", (d, w) -> refreshSetupBanner())
+                .setNegativeButton("关闭", null)
+                .show();
     }
 
     /**

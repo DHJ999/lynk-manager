@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Lynk 管家</string>
+    <string name="acc_desc">安装应用时自动点击系统安装器上的「安装」按钮。仅用于本应用发起的安装，不会读取其它内容。</string>
 </resources>

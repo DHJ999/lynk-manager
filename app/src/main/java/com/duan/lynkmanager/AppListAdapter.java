@@ -102,6 +102,15 @@ public class AppListAdapter extends BaseAdapter {
             cell.label.setGravity(Gravity.CENTER);
             cell.label.setSingleLine(true);
             cell.label.setEllipsize(TextUtils.TruncateAt.END);
+            // 应用名长短差别很大（「蓝牙音频服务」vs「Android System WebView」），
+            // 固定 16sp 必然截断。这里让文字在 9~16sp 之间自动缩放：
+            // 优先保证完整显示，缩到 9sp 还放不下才用省略号。
+            // 不用跑马灯是因为一屏 20 多张卡同时滚会非常乱，
+            // 而且 GridView 复用时 selected 状态会被 selector 清掉，滚动会断断续续。
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                cell.label.setAutoSizeTextTypeUniformWithConfiguration(
+                        9, 16, 1, TypedValue.COMPLEX_UNIT_SP);
+            }
             LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             llp.topMargin = dp(10);
