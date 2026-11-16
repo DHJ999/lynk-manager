@@ -5,7 +5,6 @@
   <img src="https://img.shields.io/badge/arch-universal-blue" alt="arch">
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
   <img src="https://img.shields.io/github/v/release/DHJ999/lynk-manager?display_name=tag&sort=semver" alt="version">
-  <img src="https://img.shields.io/github/downloads/DHJ999/lynk-manager/total" alt="downloads">
   <img src="https://gitee.com/dhj285/lynk-manager/badge/star.svg?theme=dark" alt="gitee stars">
   <img src="https://gitee.com/dhj285/lynk-manager/badge/fork.svg?theme=dark" alt="gitee forks">
 </p>
