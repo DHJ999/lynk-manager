@@ -8,7 +8,7 @@ import android.content.res.Configuration;
  * 统一把本应用的资源密度放大。
  *
  * 车机主屏 2560x1600 @ densityDpi=160，系统密度下 1dp = 1px，
- * 整套 UI 在实车上看会非常小。这里在 Activity 的 attachBaseContext 阶段
+ * 整套 UI 在实车上会看得非常小。这里在 Activity 的 attachBaseContext 阶段
  * 换成放大后的 Configuration，dp / sp / 字号 / 网格列宽一起变大。
  *
  * 注意：必须做在 Activity 上。Application.attachBaseContext 里改配置

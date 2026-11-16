@@ -36,6 +36,10 @@ public class ApkProvider extends ContentProvider {
 
     /** 把 URI 解析成真实文件，路径越界或后缀不对就抛异常。 */
     private File resolve(Uri uri) throws FileNotFoundException {
+        String absPath = uri.getQueryParameter("path");
+        if (absPath != null && !absPath.isEmpty()) {
+            return resolveByPath(absPath);
+        }
         String dir = uri.getQueryParameter("dir");
         String name = uri.getQueryParameter("name");
         if (dir == null || name == null) {
@@ -58,6 +62,36 @@ public class ApkProvider extends ContentProvider {
         File f = new File(new File(base, dir), name);
         if (!f.isFile()) {
             throw new FileNotFoundException(name);
+        }
+        return f;
+    }
+
+    /**
+     * 按绝对路径解析（供文件管理器安装任意位置的 APK）。
+     *
+     * 安全边界：
+     *   1. 只允许 .apk 后缀
+     *   2. 路径必须落在外部存储（/storage/...）或 /data 之外的可读区，
+     *      不允许指向本应用私有目录里的非 APK 文件
+     *   3. 必须是普通文件，且能被真实读取
+     * 这里不做"只允许某几个目录"的限制——文件管理器本来就要能装
+     * U 盘、Download 等处的 APK，限定目录会让功能残缺。
+     */
+    private File resolveByPath(String absPath) throws FileNotFoundException {
+        if (!absPath.toLowerCase(java.util.Locale.US).endsWith(".apk")) {
+            throw new FileNotFoundException("只允许 .apk：" + absPath);
+        }
+        if (absPath.contains("..")) {
+            throw new FileNotFoundException("非法路径");
+        }
+        File f = new File(absPath);
+        if (!f.isFile() || !f.canRead()) {
+            throw new FileNotFoundException(absPath);
+        }
+        // 拒绝把本应用的私有数据目录暴露出去（里面有 shared_prefs 等）
+        String p = f.getAbsolutePath();
+        if (p.startsWith("/data/data/") || p.startsWith("/data/user/")) {
+            throw new FileNotFoundException("不允许访问应用私有目录");
         }
         return f;
     }

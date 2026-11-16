@@ -300,6 +300,18 @@ public class MainActivity extends BaseActivity {
             }
         });
 
+        Button fileBtn = barBtn("文件");
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+        flp.rightMargin = dp(8);
+        bar.addView(fileBtn, flp);
+        fileBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openFileManager();
+            }
+        });
+
         final Button feedBtn = barBtn("反馈");
         LinearLayout.LayoutParams feedLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
@@ -673,6 +685,65 @@ public class MainActivity extends BaseActivity {
 
     private boolean hasSecurePerm() {
         return checkSelfPermission(AdbSwitchActivity.PERM) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * 打开文件管理器。
+     *
+     * 先确保拿到存储权限：targetSdk=25 下仍走 legacy storage，
+     * 只要 READ/WRITE_EXTERNAL_STORAGE 授予就能读写整个 /sdcard。
+     * 车机设置里没有权限管理页，所以这里直接 requestPermissions 弹系统框；
+     * 若用户之前拒绝过，系统可能不再弹，此时提示去授权。
+     */
+    private void openFileManager() {
+        boolean readOk = checkSelfPermission(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+        boolean writeOk = checkSelfPermission(
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                == PackageManager.PERMISSION_GRANTED;
+
+        if (readOk && writeOk) {
+            startActivity(new Intent(this, FileManagerActivity.class));
+            return;
+        }
+        requestPermissions(new String[]{
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }, REQ_STORAGE);
+    }
+
+    private static final int REQ_STORAGE = 0x1001;
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_STORAGE) {
+            return;
+        }
+        boolean ok = grantResults.length > 0;
+        for (int r : grantResults) {
+            if (r != PackageManager.PERMISSION_GRANTED) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) {
+            startActivity(new Intent(this, FileManagerActivity.class));
+        } else {
+            new AlertDialog.Builder(this)
+                    .setTitle("需要存储权限")
+                    .setMessage("文件管理需要读取和写入存储的权限。\n\n"
+                            + "如果系统没有弹出授权框，说明之前拒绝过且被记住了，"
+                            + "可以在电脑上执行一次：\n\n"
+                            + "adb shell pm grant " + getPackageName()
+                            + " android.permission.READ_EXTERNAL_STORAGE\n"
+                            + "adb shell pm grant " + getPackageName()
+                            + " android.permission.WRITE_EXTERNAL_STORAGE")
+                    .setPositiveButton("知道了", null)
+                    .show();
+        }
     }
 
     /**

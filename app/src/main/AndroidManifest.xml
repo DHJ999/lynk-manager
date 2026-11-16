@@ -18,6 +18,11 @@
     <!-- 车机上点已上传的 APK 直接拉起安装器 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- 文件管理器：targetSdk=25 → 走 legacy storage，不受分区存储限制，
+         这两条能覆盖 /sdcard 与 U 盘挂载点的读写 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
     <!-- 局域网传文件：车机开热点 / 连手机热点 -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
@@ -60,6 +65,14 @@
             android:exported="false"
             android:label="传文件"
             android:screenOrientation="landscape" />
+
+        <activity
+            android:name=".FileManagerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:label="文件管理"
+            android:screenOrientation="landscape"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan" />
 
         <!-- 把 uploads/export 下的 apk 以 content:// 暴露给系统安装器（Android 7+ 禁止 file:// 直传） -->
         <provider

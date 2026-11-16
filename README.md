@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
   <img src="https://img.shields.io/github/v/release/DHJ999/lynk-manager?display_name=tag&sort=semver" alt="version">
   <img src="https://img.shields.io/github/downloads/DHJ999/lynk-manager/total" alt="downloads">
-  <img src="https://img.shields.io/github/stars/DHJ999/lynk-manager" alt="stars">
+  <img src="https://gitee.com/dhj285/lynk-manager/badge/star.svg?theme=dark" alt="gitee stars">
 </p>
 
 领克车机的应用管理工具：列出应用、卸载、强停、导出 APK，内置 ADB 开关，
@@ -132,6 +132,23 @@ adb shell pm grant com.duan.lynkmanager android.permission.WRITE_SECURE_SETTINGS
 上传后点记录即可安装，走 `PackageInstaller` 会话，系统确认框会自动点掉。
 装完 5 秒左右，全程不用碰车机屏幕。
 
+### 文件管理
+
+内置文件浏览器，能读写整个 `/sdcard` 和 U 盘。
+
+| 功能 | 说明 |
+|---|---|
+| 浏览 | 进入/返回目录；返回键退一层，不在根目录才退出页面 |
+| 快捷跳转 | 内部存储、下载、图片、音乐、视频、文档、相机、根目录、**U 盘自动探测** |
+| 新建 / 重命名 | 带重名校验 |
+| 删除 | 文件夹递归删除，二次确认 |
+| 复制 / 移动 | 复制后到目标目录点「粘贴」 |
+| 安装 APK | 任意位置的 APK 都能拉起安装器 |
+| 打开 | 按 MIME 类型交给系统应用 |
+| 详情 | 路径、类型、大小、修改时间、读写执行权限 |
+
+列表按类型显示彩色徽章（DIR/APK/IMG/VID/SND/TXT/ZIP），文件夹永远排最前。
+
 ## 构建
 
 ```bash
@@ -159,7 +176,10 @@ app/src/main/java/com/duan/lynkmanager/
   LanTransferActivity.java   传文件页：二维码、上传下载、安装
   SimpleHttpServer.java      极简 HTTP 服务（上传/下载/multipart 解析）
   WifiDirect.java            热点启停、连网
-  ApkProvider.java           暴露 uploads/export 下的 APK 给安装器
+  FileManagerActivity.java   文件管理页：浏览、复制、移动、删除、安装
+  FileListAdapter.java       文件列表渲染
+  FileEntry.java             文件项数据模型
+  ApkProvider.java           暴露 .apk 给系统安装器
   InstallClickService.java   无障碍服务，代点系统「安装」按钮
   InstallResultReceiver.java 安装结果回调
   TransferService.java       前台服务，防止后台被杀
@@ -180,6 +200,8 @@ scripts/
 | 传文件要同一局域网 | 4G/5G 下不互通 |
 | 服务只在应用进程活着时有效 | 进程被杀则停止，重开应用即可 |
 | 明文 HTTP | 只在局域网用，别在公共网络开 |
+| 文件管理需存储权限 | 首次进入会申请；被拒绝过则需 adb 授权两条 `pm grant` |
+| 部分目录不可写 | `/sdcard/Android/data` 下其它应用的目录受系统保护 |
 
 ## 许可
 
