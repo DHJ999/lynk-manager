@@ -1,7 +1,7 @@
 <h1 align="center">Lynk-Manager · 车机应用管家</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-1.4.6-blue" alt="version">
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Gradle-9.1.0-02303A?logo=gradle&logoColor=white" alt="Gradle">
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
@@ -23,33 +23,12 @@
 - minSdk 23 / targetSdk 25 / compileSdk 36
 - 仅二维码用到 ZXing core，其余纯平台 API
 
-> **🚗 新车首次使用必须先做的两步授权**：详见
-> [docs/first-setup.md](docs/first-setup.md)。
-> U 盘装完后还不能直接装 APK，需要在电脑上跑**两条 adb 命令**
-> （`appops` 开安装权限 + `pm grant` 给 WRITE_SECURE_SETTINGS），
-> 一次生效、重启不丢、只有卸载才需重做。之后全程手机操作。
-> 未授权时应用顶部会常驻红条提示，点开可一键复制命令。
-
-> **📋 车机安装 APK 的三重封锁与解法**：详见
-> [docs/install-blocker-analysis.md](docs/install-blocker-analysis.md)。
-> 包含完整根因分析（授权入口被砍 / 安装按钮防点击过滤 / staged 分支损坏）、
-> v1.4.3 的无障碍自动点击方案，以及下次连接车机时
-> 验证"替换原版 Settings"替代方案的完整实验步骤与决策树。
+> **⚠️ 装完必须执行两条 adb 授权**（`appops` 开安装权限 + `pm grant` 给
+> `WRITE_SECURE_SETTINGS`），否则无法安装 APK。命令与原理见
+> [docs/first-setup.md](docs/first-setup.md)（一键脚本：`scripts/grant-perms.bat`）。
 >
-> **🎲 替代方案成功率推演**：详见
-> [docs/alt-plan-probability.md](docs/alt-plan-probability.md)。
-> 分步概率计算：签名一致 ~5% × 回编成功 ~35% × 安装接受 ~40% × 授权页可用 ~50%
-> → **总成功率约 0.35%**。结论：下次先花 5 分钟做签名分析（零风险判决），
-> 95% 概率直接排除该方案，届时集中精力修 1.4.3 的 force-stop 边界。
->
-> **✅ 步骤0已实测：方案排除**：详见
-> [docs/step0-signature-result.md](docs/step0-signature-result.md)。
-> 三方签名比对完成：车机平台/原厂设置均为 **DesaySV（德赛西威）** 签发
-> (`F5:1E:54:A4:…:2B:03:B5`)，而反编译包是 **EcarX（亿咖通）** 2018 年签发
-> (`3D:89:C5:63:…:C3:CC:73`)，四维全不一致。
-> `sharedUserId=android.uid.system` 的签名校验必然失败
-> (`INSTALL_FAILED_SHARED_USER_INCOMPATIBLE`)，**替换 Settings 方案终止**。
-> 无障碍方案是唯一可行路径。
+> 技术细节与踩坑记录：[安装三重封锁分析](docs/install-blocker-analysis.md) ·
+> [签名实验结论](docs/step0-signature-result.md)
 
 ## 功能
 
