@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-orange" alt="license">
   <img src="https://img.shields.io/github/v/release/DHJ999/lynk-manager?display_name=tag&sort=semver" alt="version">
   <img src="https://img.shields.io/github/forks/DHJ999/lynk-manager" alt="forks">
-  <img src="https://gitee.com/dhj285/lynk-manager/badge/star.svg?theme=dark" alt="stars">
+  <img src="https://img.shields.io/github/stars/DHJ999/lynk-manager" alt="stars">
 </p>
 
 领克车机的应用管理工具：列出应用、卸载、强停、导出 APK，内置 ADB 开关，
