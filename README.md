@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/github/v/release/DHJ999/lynk-manager?display_name=tag&sort=semver" alt="version">
   <img src="https://img.shields.io/github/downloads/DHJ999/lynk-manager/total" alt="downloads">
   <img src="https://gitee.com/dhj285/lynk-manager/badge/star.svg?theme=dark" alt="gitee stars">
+  <img src="https://gitee.com/dhj285/lynk-manager/badge/fork.svg?theme=dark" alt="gitee forks">
 </p>
 
 领克车机的应用管理工具：列出应用、卸载、强停、导出 APK，内置 ADB 开关，

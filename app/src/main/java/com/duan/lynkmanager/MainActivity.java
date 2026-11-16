@@ -300,7 +300,7 @@ public class MainActivity extends BaseActivity {
             }
         });
 
-        Button fileBtn = barBtn("文件");
+        Button fileBtn = barBtn("文件管理");
         LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
         flp.rightMargin = dp(8);
