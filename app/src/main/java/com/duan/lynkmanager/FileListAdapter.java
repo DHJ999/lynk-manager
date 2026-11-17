@@ -1,6 +1,10 @@
 package com.duan.lynkmanager;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.text.TextUtils;
@@ -9,6 +13,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -60,14 +65,31 @@ public class FileListAdapter extends BaseAdapter {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(14), dp(10), dp(14), dp(10));
 
+            // 图标区：同时放「文字徽章」和「文件夹图形」两个子 View，
+            // 按文件类型显示其中一个（文件夹显示图形，其余显示文字徽章）。
+            FrameLayout iconBox = new FrameLayout(ctx);
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(dp(52), dp(40));
+            row.addView(iconBox, ilp);
+
             TextView badge = new TextView(ctx);
             badge.setGravity(Gravity.CENTER);
             badge.setTextSize(11);
             badge.setTypeface(Typeface.DEFAULT_BOLD);
             badge.setTextColor(0xFFFFFFFF);
-            badge.setWidth(dp(52));
-            badge.setHeight(dp(40));
-            row.addView(badge);
+            badge.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            badge.setId(android.R.id.icon1);
+            iconBox.addView(badge);
+
+            // 文件夹图形：用 FolderIconView 自绘
+            FolderIconView folder = new FolderIconView(ctx);
+            folder.setLayoutParams(new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            folder.setId(android.R.id.icon2);
+            folder.setVisibility(View.GONE);
+            iconBox.addView(folder);
 
             LinearLayout col = new LinearLayout(ctx);
             col.setOrientation(LinearLayout.VERTICAL);
@@ -94,9 +116,19 @@ public class FileListAdapter extends BaseAdapter {
 
         FileEntry e = items.get(position);
 
-        TextView badge = (TextView) row.getChildAt(0);
-        badge.setText(e.badge());
-        badge.setBackground(badgeBg(e.kind()));
+        TextView badge = row.findViewById(android.R.id.icon1);
+        FolderIconView folderIcon = row.findViewById(android.R.id.icon2);
+        if (e.isDir) {
+            // 文件夹：显示图形，隐藏文字徽章
+            badge.setVisibility(View.GONE);
+            folderIcon.setVisibility(View.VISIBLE);
+        } else {
+            // 文件：显示文字徽章（APK/IMG/VID...），隐藏图形
+            badge.setVisibility(View.VISIBLE);
+            folderIcon.setVisibility(View.GONE);
+            badge.setText(e.badge());
+            badge.setBackground(badgeBg(e.kind()));
+        }
 
         TextView name = row.findViewById(android.R.id.text1);
         name.setText(e.name());

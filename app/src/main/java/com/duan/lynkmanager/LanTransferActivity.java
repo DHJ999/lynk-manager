@@ -12,6 +12,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -87,16 +88,28 @@ public class LanTransferActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        File base = getExternalFilesDir(null);
-        uploadDir = new File(base, "uploads");
-        exportDir = new File(base, "export");
+        // 新路径：公共下载目录下的「上传文件」「导出文件」，
+        // 用户能用系统文件管理器/文件管理器页面直接看到，不用再翻
+        // Android/data 私有目录。targetSdk=25 走 legacy storage，可直接写。
+        File downloadRoot = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOWNLOADS);
+        if (downloadRoot == null) {
+            // 极少数机型取不到，退回私有目录保证功能不崩
+            downloadRoot = getExternalFilesDir(null);
+        }
+        uploadDir = new File(downloadRoot, DIR_UPLOAD);
+        exportDir = new File(downloadRoot, DIR_EXPORT);
         if (!uploadDir.exists()) {
             uploadDir.mkdirs();
         }
         if (!exportDir.exists()) {
             exportDir.mkdirs();
         }
-        migrateLegacyExports(base, exportDir);
+        // 老版本把文件放在 Android/data/<包名>/files/{uploads,export}，
+        // 升级后搬到新位置，避免用户的文件"消失"。
+        File oldBase = getExternalFilesDir(null);
+        migrateOldDir(new File(oldBase, "uploads"), uploadDir);
+        migrateOldDir(new File(oldBase, "export"), exportDir);
         setContentView(buildUi());
         statusView.setText("未启动");
         wifiDirect = new WifiDirect(this);
@@ -106,6 +119,66 @@ public class LanTransferActivity extends BaseActivity {
         refreshAll();
         requestWifiPermissionsIfNeeded();
         refreshWifiState();
+    }
+
+    /** 公共下载目录下的两个子目录名。 */
+    private static final String DIR_UPLOAD = "上传文件";
+    private static final String DIR_EXPORT = "导出文件";
+
+    /** 把老版本私有目录里的文件搬到新公共目录，搬完删掉空目录。 */
+    private void migrateOldDir(File src, File dst) {
+        try {
+            if (src == null || !src.isDirectory()) {
+                return;
+            }
+            File[] fs = src.listFiles();
+            if (fs == null || fs.length == 0) {
+                src.delete();
+                return;
+            }
+            for (File f : fs) {
+                if (!f.isFile()) {
+                    continue;
+                }
+                File target = new File(dst, f.getName());
+                if (target.exists()) {
+                    continue;
+                }
+                if (f.renameTo(target)) {
+                    continue;
+                }
+                // 跨挂载点 rename 会失败，退回流拷贝
+                java.io.InputStream in = null;
+                java.io.OutputStream out = null;
+                try {
+                    in = new java.io.FileInputStream(f);
+                    out = new java.io.FileOutputStream(target);
+                    byte[] buf = new byte[64 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        out.write(buf, 0, n);
+                    }
+                    out.flush();
+                } finally {
+                    if (in != null) {
+                        try {
+                            in.close();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                    if (out != null) {
+                        try {
+                            out.close();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+                f.delete();
+            }
+            src.delete();
+        } catch (Throwable t) {
+            android.util.Log.w("LynkMgr", "迁移旧目录失败", t);
+        }
     }
 
     /** Android 10+ 开热点/连热点必须给定位权限，这里主动申请一次。 */
@@ -1195,25 +1268,6 @@ public class LanTransferActivity extends BaseActivity {
                 .setNeutralButton("重新检测", (d, w) -> refreshPermBar())
                 .setNegativeButton("关闭", null)
                 .show();
-    }
-
-    /** 1.4.0 之前把导出的 APK 直接放在 files/ 根目录，这里搬到 export/，避免继续散落。 */
-    private void migrateLegacyExports(File base, File exportDir) {
-        if (base == null) {
-            return;
-        }
-        File[] fs = base.listFiles();
-        if (fs == null) {
-            return;
-        }
-        for (File f : fs) {
-            if (f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".apk")) {
-                File dst = new File(exportDir, f.getName());
-                if (!dst.exists()) {
-                    f.renameTo(dst);
-                }
-            }
-        }
     }
 
     // ---------------- 上传记录 ----------------

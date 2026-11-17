@@ -115,10 +115,7 @@ public class FileManagerActivity extends BaseActivity {
             }
         });
 
-        TextView title = tv("文件管理", 22, TEXT, true);
-        head.addView(title, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
+        // 操作按钮放左侧：驾驶位在左，方便驾驶员操作
         Button upBtn = barBtn("上一级");
         LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
@@ -152,6 +149,12 @@ public class FileManagerActivity extends BaseActivity {
                 createFolder();
             }
         });
+
+        // 标题放最后，weight=1 占满剩余空间
+        TextView title = tv("文件管理", 22, TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        head.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         HorizontalScrollView shortcutBar = new HorizontalScrollView(this);
         shortcutBar.setHorizontalScrollBarEnabled(false);
@@ -371,8 +374,28 @@ public class FileManagerActivity extends BaseActivity {
                 + files + " 个文件 · 合计 " + FileEntry.sizeText(total));
     }
 
-    private void goUp() {
+    /**
+     * 延迟刷新列表。
+     *
+     * 对话框 onClick 里直接重扫列表，容易和 AlertDialog 的关闭动画抢时序，
+     * 实测新建文件夹后列表不更新。放到消息队列下一拍执行，稳定生效。
+     */
+    private void refreshListDelayed() {
         if (current == null) {
+            return;
+        }
+        final File dir = current;
+        list.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!isFinishing() && dir.equals(current)) {
+                    navigateTo(dir);
+                }
+            }
+        }, 250);
+    }
+
+    private void goUp() {        if (current == null) {
             return;
         }
         File parent = current.getParentFile();
@@ -569,7 +592,7 @@ public class FileManagerActivity extends BaseActivity {
                         }
                         if (f.renameTo(dst)) {
                             toast("已重命名");
-                            navigateTo(current);
+                            refreshListDelayed();
                         } else {
                             toast("重命名失败");
                         }
@@ -590,7 +613,7 @@ public class FileManagerActivity extends BaseActivity {
                     public void onClick(DialogInterface d, int w) {
                         boolean ok = deleteRecursive(f);
                         toast(ok ? "已删除" : "删除失败，可能没有权限");
-                        navigateTo(current);
+                        refreshListDelayed();
                     }
                 })
                 .setNegativeButton("取消", null)
@@ -637,7 +660,10 @@ public class FileManagerActivity extends BaseActivity {
                         }
                         if (dst.mkdirs()) {
                             toast("已创建");
-                            navigateTo(current);
+                            // 对话框关闭与列表刷新存在时序竞争：直接调
+                            // navigateTo 时，AlertDialog 的 dismiss 动画还没结束，
+                            // 刷新可能被覆盖。延迟一拍再刷，确保用户看到新目录。
+                            refreshListDelayed();
                         } else {
                             toast("创建失败，可能没有写入权限");
                         }
@@ -675,7 +701,7 @@ public class FileManagerActivity extends BaseActivity {
             } else {
                 toast("已复制");
             }
-            navigateTo(current);
+            refreshListDelayed();
         } catch (Throwable t) {
             toast("失败：" + t.getMessage());
         }

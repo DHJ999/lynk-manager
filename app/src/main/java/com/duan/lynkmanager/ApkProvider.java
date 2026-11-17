@@ -55,11 +55,15 @@ public class ApkProvider extends ContentProvider {
         if (name.contains("/") || name.contains("\\") || name.contains("..")) {
             throw new FileNotFoundException("非法文件名");
         }
-        File base = getContext() == null ? null : getContext().getExternalFilesDir(null);
+        File base = getContext() == null ? null
+                : android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS);
         if (base == null) {
             throw new FileNotFoundException("存储不可用");
         }
-        File f = new File(new File(base, dir), name);
+        // 目录名跟着传文件页一起改到了公共下载目录
+        String dirName = DIR_UPLOADS.equals(dir) ? "上传文件" : "导出文件";
+        File f = new File(new File(base, dirName), name);
         if (!f.isFile()) {
             throw new FileNotFoundException(name);
         }

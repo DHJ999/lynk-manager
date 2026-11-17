@@ -68,7 +68,6 @@ public class MainActivity extends BaseActivity {
     private Button adbBtn;
     /** 首次安装引导条：缺 WRITE_SECURE_SETTINGS 时显示。 */
     private TextView setupBanner;
-    private Button refreshBtn;
     /** 根布局，供 onWindowFocusChanged 里做高度校正。 */
     private LinearLayout rootLayout;
     /** 正在读取/刷新应用列表，防止重复点击叠加扫描。 */
@@ -120,6 +119,19 @@ public class MainActivity extends BaseActivity {
         // 每次回到主界面都查一次授权状态：用户可能刚在电脑上跑完 adb 命令，
         // 切回来红条应当自动消失，不用重启应用。
         refreshSetupBanner();
+        // 自动重扫应用列表：用户从卸载界面/安装器返回后，
+        // 列表必须立刻反映真实状态，不能要求手动点刷新。
+        // 用 post 延迟一拍，避开 onResume 期间做重型 IO。
+        if (!loading) {
+            ui.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!isFinishing() && !loading) {
+                        loadApps(false);
+                    }
+                }
+            }, 300);
+        }
         // 布局把网格挤成 0 高时界面看起来是「空的」，但日志里数据是全的。
         // 这里把关键尺寸打出来，方便现场一眼区分「没数据」和「没显示」。
         if (grid != null) {
@@ -275,7 +287,8 @@ public class MainActivity extends BaseActivity {
         // 之前手工塞 ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         // 反而让 weight 分配失效，grid 高度被算成 0。
 
-        // 顶栏
+        // 顶栏布局：左侧放常用功能按钮（驾驶位在左，方便驾驶员操作），
+        // 中间标题用 weight=1 撑开，ADB 开关留在最右不变。
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
@@ -283,10 +296,6 @@ public class MainActivity extends BaseActivity {
         bar.setPadding(bp, dp(14), bp, dp(12));
         root.addView(bar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        TextView title = tv("Lynk 管家", 22, TEXT, true);
-        bar.addView(title, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         Button transferBtn = barBtn("传文件");
         LinearLayout.LayoutParams trlp = new LinearLayout.LayoutParams(
@@ -335,6 +344,24 @@ public class MainActivity extends BaseActivity {
                 showAppreciate();
             }
         });
+
+        Button uninstallBtn = barBtn("卸载管家");
+        LinearLayout.LayoutParams unlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+        unlp.rightMargin = dp(8);
+        bar.addView(uninstallBtn, unlp);
+        uninstallBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, UninstallActivity.class));
+            }
+        });
+
+        // 标题放在按钮之后，用 weight=1 占满中间空隙，把 ADB 顶到最右
+        TextView title = tv("Lynk 管家", 22, TEXT, true);
+        title.setGravity(Gravity.CENTER);
+        bar.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         adbBtn = barBtn("ADB");
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
@@ -463,31 +490,8 @@ public class MainActivity extends BaseActivity {
             chips[i] = c;
         }
 
-        // 刷新按钮靠右对齐：筛选行右侧留白足够，不占用顶栏宽度
-        View spacer = new View(this);
-        chipRow.addView(spacer, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-        refreshBtn = new Button(this);
-        refreshBtn.setAllCaps(false);
-        refreshBtn.setText("刷新");
-        refreshBtn.setTextSize(13);
-        refreshBtn.setTextColor(0xFFFFFFFF);
-        refreshBtn.setMinWidth(0);
-        refreshBtn.setMinimumWidth(0);
-        refreshBtn.setMinHeight(0);
-        refreshBtn.setMinimumHeight(0);
-        refreshBtn.setIncludeFontPadding(false);
-        refreshBtn.setPadding(dp(18), 0, dp(18), 0);
-        refreshBtn.setBackground(box(LINE, 18));
-        chipRow.addView(refreshBtn, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)));
-        refreshBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                refreshApps();
-            }
-        });
+        // 刷新按钮已移除：改为 onResume 自动重扫，用户从卸载/安装界面
+        // 返回时列表会自动更新，不需要手动点。
 
         // 网格（图标 + 名称 + 包名）
         // 不能用 height=0 + weight=1：实测这台车机上该组合被结算成 0 高，
@@ -1236,12 +1240,9 @@ public class MainActivity extends BaseActivity {
     }
 
     private void setRefreshState(boolean busy, String label) {
-        if (refreshBtn == null) {
-            return;
-        }
-        refreshBtn.setText(label);
-        refreshBtn.setEnabled(!busy);
-        refreshBtn.setAlpha(busy ? 0.6f : 1f);
+        // 刷新按钮已移除，这里只维护 loading 标志，
+        // 避免 loadApps 里的调用点报错。
+        loading = busy;
     }
 
     private void applyFilter() {

@@ -22,8 +22,8 @@ android {
         // 本项目都不涉及；WiFi/安装/文件这些用法在 25 上完全正常。
         minSdk = 23
         targetSdk = 25
-        versionCode = 57
-        versionName = "1.0.2"
+        versionCode = 58
+        versionName = "1.1.0"
     }
 
     // targetSdk 25 下调用 API 26+ 算 NewApi lint 告警，

@@ -704,12 +704,21 @@ public class SimpleHttpServer {
               h1{font-size:20px;margin:0 0 6px}
               .sub{color:#8a97a6;font-size:13px;margin-bottom:20px}
               .card{background:#1b2128;border-radius:14px;padding:18px;margin-bottom:14px}
-              label.file{display:block;border:2px dashed #2c343e;border-radius:12px;
-                   padding:28px 16px;text-align:center;color:#8a97a6;font-size:14px}
+              label.file{display:block;border:2px dashed #3d4854;border-radius:12px;
+                   padding:24px 16px;text-align:center;cursor:pointer;
+                   transition:border-color .15s,background .15s}
+              label.file:hover{border-color:#4caf50;background:#1a2420}
+              label.file:active{background:#20302a}
+              .pickIcon{font-size:34px;line-height:1;color:#4caf50;font-weight:300;margin-bottom:8px}
+              .pickTitle{font-size:16px;color:#e8edf2;font-weight:600;margin-bottom:4px}
+              .pickHint{font-size:12px;color:#8a97a6}
               input[type=file]{display:none}
-              .btn{display:block;width:100%;margin-top:14px;padding:14px;border:0;border-radius:12px;
-                   background:#4caf50;color:#fff;font-size:16px}
-              .btn:disabled{background:#2c343e;color:#8a97a6}
+              .btn{display:block;width:100%;margin-top:16px;padding:16px;border:0;border-radius:12px;
+                   background:#4caf50;color:#fff;font-size:17px;font-weight:600;
+                   transition:background .15s,transform .1s}
+              .btn:active{transform:scale(.98)}
+              .btn:disabled{background:#242a31;color:#5c6874;font-weight:400}
+              .btn.ready{background:#4caf50;box-shadow:0 4px 12px rgba(76,175,80,.35)}
               .bar{height:6px;background:#0c1014;border-radius:3px;overflow:hidden;margin-top:14px;display:none}
               .bar i{display:block;height:100%;width:0;background:#4caf50;transition:width .2s}
               .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#a8b4c0;
@@ -742,10 +751,16 @@ public class SimpleHttpServer {
             <div class="sub">选好 APK 后点上传，同一个 Wi-Fi 下即可 · <a href="/dl" style="color:#4caf50;text-decoration:none">下载车机文件 →</a></div>
 
             <div class="card">
-              <label class="file" for="f" id="pick">点击选择 APK（可多选，可多次添加）</label>
               <input id="f" type="file" accept=".apk,application/vnd.android.package-archive" multiple>
+              <!-- 整块可点：点卡片任意位置都能选文件。原来只有一个 label 可点，
+                   用户看不出哪里能点，实测反馈"不知道点哪里上传"。 -->
+              <label class="file" for="f" id="pick">
+                <div class="pickIcon">＋</div>
+                <div class="pickTitle">点击这里选择 APK</div>
+                <div class="pickHint">可多选 · 可多次添加</div>
+              </label>
               <ul class="files" id="list"></ul>
-              <div class="empty" id="empty">还没有选择文件</div>
+              <div class="empty" id="empty">尚未选择文件</div>
               <button class="btn" id="go" disabled>上传</button>
               <div class="bar" id="bar"><i id="fill"></i></div>
             </div>
@@ -813,15 +828,31 @@ public class SimpleHttpServer {
                 listEl.appendChild(li);
               })(picked[idx]);}
               go.disabled=picked.length===0||uploading;
-              go.textContent=uploading?'上传中…'
-                :(picked.length?('上传 '+picked.length+' 个 APK'):'上传');
-              pick.textContent=uploading?'上传中，请稍候'
-                :(picked.length?'继续添加 APK':'点击选择 APK（可多选，可多次添加）');
-              // 上传期间把选择框也变灰：点进去再加文件会让 picked 变化，
-              // 与正在跑的上传循环相互干扰（虽然逻辑上能跑，但界面会跳）
-              pick.className=uploading?'disabled':'';
-              if(uploading){pick.onclick=function(e){e.preventDefault();return false;};}
-              else{pick.onclick=null;}
+              if(uploading){
+                go.textContent='上传中…';
+                go.classList.remove('ready');
+              }else if(picked.length){
+                go.textContent='开始上传（'+picked.length+' 个）';
+                go.classList.add('ready');
+              }else{
+                go.textContent='先选择 APK';
+                go.classList.remove('ready');
+              }
+              // 选择区的三段文案，根据状态切换
+              if(uploading){
+                pick.innerHTML='<div class="pickIcon">…</div>'
+                  +'<div class="pickTitle">上传中，请稍候</div>'
+                  +'<div class="pickHint">传完可继续添加</div>';
+                pick.className='file disabled';
+                pick.onclick=function(e){e.preventDefault();return false;};
+              }else{
+                pick.innerHTML='<div class="pickIcon">＋</div>'
+                  +'<div class="pickTitle">'
+                  +(picked.length?'继续添加 APK':'点击这里选择 APK')+'</div>'
+                  +'<div class="pickHint">可多选 · 可多次添加</div>';
+                pick.className='file';
+                pick.onclick=null;
+              }
             }
 
             f.onchange=function(){
